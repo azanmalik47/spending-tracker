@@ -1,121 +1,118 @@
+import { BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
 import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
 import './App.css'
+import Papa from 'papaparse'
+
+const categoryKeywords = {
+  Groceries: ['tesco', 'sainsbury', 'asda'],
+  Transport: ['uber', 'trainline'],
+  Eating: ['nandos', 'just eat', 'deliveroo'],
+  Entertainment: ['netflix', 'amazon prime'],
+};
+
+function getCategoryTotals(items) {
+  const totals = {};
+  items.forEach((t) => {
+    totals[t.category] = (totals[t.category] || 0) + (t.amount || 0);
+  });
+  return Object.entries(totals).map(([category, total]) => ({ category, total }));
+}
+
+function categorise(description) {
+  const desc = description.toLowerCase();
+  for (const [category, keywords] of Object.entries(categoryKeywords)) {
+    if (keywords.some((k) => desc.includes(k))) {
+      return category;
+    }
+  }
+  return 'Other';
+}
+
+function flagAnomalies(items) {
+  const byCategory = {};
+  items.forEach((t) => {
+    if (!byCategory[t.category]) byCategory[t.category] = [];
+    byCategory[t.category].push(t.amount);
+  });
+
+  const stats = {};
+  for (const [category, amounts] of Object.entries(byCategory)) {
+    const mean = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+    const variance =
+      amounts.reduce((a, b) => a + (b - mean) ** 2, 0) / amounts.length;
+    stats[category] = { mean, stdDev: Math.sqrt(variance) };
+  }
+
+  return items.map((t) => {
+    const { mean, stdDev } = stats[t.category];
+    const isAnomaly = stdDev > 0 && t.amount > mean + 1.5 * stdDev;
+    return { ...t, isAnomaly };
+  });
+}
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [transactions, setTransactions] = useState([]);
+
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    Papa.parse(file, {
+      header: true,
+      dynamicTyping: true,
+      complete: (results) => {
+        setTransactions(results.data);
+        console.log(results.data);
+      }
+    });
+  };
+
+  const categorised = transactions.map((t) => ({
+    ...t,
+    category: categorise(t.description || ''),
+  }));
+
+  const flagged = flagAnomalies(categorised);
+
+  const total = flagged.reduce((sum, t) => sum + (t.amount || 0), 0);
+  const anomalyCount = flagged.filter((t) => t.isAnomaly).length;
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div>
+      <input type="file" accept='.csv' onChange={handleFileUpload}></input>
 
-      <div className="ticks"></div>
+      <div>
+        <p>Total spend: £{total.toFixed(2)}</p>
+        <p>Transactions: {flagged.length}</p>
+        <p>Flagged as unusual: {anomalyCount}</p>
+      </div>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Amount</th>
+            <th>Categories</th>
+          </tr>
+        </thead>
+        <tbody>
+          {flagged.map((t, i) => (
+            <tr key={i} style={{ backgroundColor: t.isAnomaly ? '#ffdddd' : 'transparent' }}>
+              <td>{t.date}</td>
+              <td>{t.description}</td>
+              <td>{t.amount}</td>
+              <td>{t.category}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      <BarChart width={500} height={300} data={getCategoryTotals(categorised)}>
+        <XAxis dataKey="category" />
+        <YAxis />
+        <Tooltip />
+        <Bar dataKey="total" fill="#8884d8" />
+      </BarChart>
+    </div>
   )
 }
 
